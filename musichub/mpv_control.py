@@ -56,4 +56,11 @@ def launch_mpv(paths: AppPaths, targets: list[str]) -> subprocess.Popen[str]:
     if ytdlp:
         ytdlp_dir = str(Path(ytdlp).parent)
         env["PATH"] = ytdlp_dir + os.pathsep + env.get("PATH", "")
-    return subprocess.Popen(args, env=env)
+    # Detach from parent console so mpv survives after Python/cmd.exe exits
+    return subprocess.Popen(
+        args, env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.DETACHED_PROCESS,
+    )
