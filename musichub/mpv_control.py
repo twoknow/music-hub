@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .config import AppPaths, ensure_dirs
-from .slots import pipe_for_slot
+from .slots import pipe_for_slot, SLOT_PRIMARY
 
 
 def _resolve_ytdlp(mpv_exe: str) -> str | None:
@@ -39,7 +39,7 @@ def resolve_mpv_exe(paths: AppPaths) -> str:
     )
 
 
-def launch_mpv(paths: AppPaths, targets: list[str], slot_id: str = "0") -> subprocess.Popen[str]:
+def launch_mpv(paths: AppPaths, targets: list[str], slot_id: str = SLOT_PRIMARY) -> subprocess.Popen[str]:
     ensure_dirs(paths)
     mpv_exe = resolve_mpv_exe(paths)
     args = [
