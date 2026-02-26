@@ -203,6 +203,35 @@ def cmd_play(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_layer(args: argparse.Namespace) -> int:
+    """Launch a new mpv instance alongside existing ones (overlay mode)."""
+    paths = _ensure_ready()
+    _safe_sync_events(paths)
+
+    if not args.target:
+        print("Usage: m layer <URL or search query>", file=sys.stderr)
+        return 1
+
+    if _is_url(args.target):
+        targets = [args.target]
+    elif Path(args.target).expanduser().exists():
+        targets = [str(Path(args.target).expanduser().resolve())]
+    else:
+        url = _run_yt_dlp_print_url(args.target)
+        print(f"Resolved search -> {url}")
+        targets = [url]
+
+    # Find next available slot (slot 0 may already be primary)
+    registry = clean_dead_slots(paths)
+    slot_id = next_slot_id(registry)
+    pipe = pipe_for_slot(slot_id)
+
+    proc = launch_mpv(paths, targets, slot_id=slot_id)
+    register_slot(paths, slot_id, pipe, proc.pid)
+    print(json.dumps({"ok": True, "action": "layer", "slot": slot_id, "pid": proc.pid, "pipe": pipe}, ensure_ascii=False))
+    return 0
+
+
 def cmd_current(_args: argparse.Namespace) -> int:
     client = MpvIpcClient(get_paths().mpv_pipe)
     print(json.dumps(_get_mpv_snapshot(client), ensure_ascii=False, indent=2))
@@ -448,6 +477,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--engine", choices=["auto", "rule", "implicit"], default="auto")
     p.add_argument("--why", action="store_true", help="Show queue reasons before playback")
     p.set_defaults(func=cmd_play)
+
+    p = sub.add_parser("layer", help="Layer a new mpv instance alongside existing ones")
+    p.add_argument("target", nargs="?", help="URL or search query")
+    p.set_defaults(func=cmd_layer)
 
     p = sub.add_parser("current", help="Show current mpv track via IPC")
     p.set_defaults(func=cmd_current)
