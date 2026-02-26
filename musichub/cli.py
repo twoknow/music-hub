@@ -325,6 +325,40 @@ def cmd_pause(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_vol(args: argparse.Namespace) -> int:
+    """Set volume on a specific slot or all active slots. Range 0-130 (100=normal)."""
+    paths = get_paths()
+    registry = clean_dead_slots(paths)
+
+    if not registry:
+        print("No active mpv slots.", file=sys.stderr)
+        return 1
+
+    level = max(0, min(130, int(args.level)))
+
+    if args.slot == "all":
+        slots_to_update = list(registry.values())
+    else:
+        info = registry.get(args.slot)
+        if info is None:
+            active = sorted(registry.keys())
+            print(f"Slot {args.slot!r} not found. Active slots: {active}", file=sys.stderr)
+            return 1
+        slots_to_update = [info]
+
+    results = []
+    for info in slots_to_update:
+        client = MpvIpcClient(info.pipe)
+        try:
+            client.command(["set_property", "volume", level])
+            results.append({"slot": info.slot_id, "volume": level, "ok": True})
+        except MpvIpcError as exc:
+            results.append({"slot": info.slot_id, "error": str(exc), "ok": False})
+
+    print(json.dumps(results, ensure_ascii=False))
+    return 0
+
+
 def cmd_doctor(_args: argparse.Namespace) -> int:
     paths = _ensure_ready()
     checks: dict[str, Any] = {
@@ -495,6 +529,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("pause", help="Toggle pause/resume playback")
     p.set_defaults(func=cmd_pause)
+
+    p = sub.add_parser("vol", help="Set volume for a slot or all slots (0-130, 100=normal)")
+    p.add_argument("slot", nargs="?", default="0", help="Slot ID or 'all'")
+    p.add_argument("level", type=int, help="Volume level 0-130")
+    p.set_defaults(func=cmd_vol)
 
     p = sub.add_parser("good", help="Mark current track good")
     p.set_defaults(func=cmd_good)
