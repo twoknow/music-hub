@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .config import AppPaths
 
 SLOT_PRIMARY = "0"
+MAX_SLOTS = 100
 
 
 @dataclass
@@ -26,27 +27,31 @@ def pipe_for_slot(slot_id: str) -> str:
     return rf"\\.\pipe\musichub-mpv-{slot_id}"
 
 
-def _registry_path(paths) -> Path:
+def _registry_path(paths: AppPaths) -> Path:
     return Path(paths.runtime_dir) / "mpv_slots.json"
 
 
-def load_registry(paths) -> dict[str, SlotInfo]:
+def load_registry(paths: AppPaths) -> dict[str, SlotInfo]:
     p = _registry_path(paths)
     if not p.exists():
         return {}
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
         return {k: SlotInfo(**v) for k, v in data.items()}
-    except Exception:
+    except json.JSONDecodeError:
+        return {}
+    except (KeyError, TypeError):
         return {}
 
 
-def save_registry(paths, registry: dict[str, SlotInfo]) -> None:
+def save_registry(paths: AppPaths, registry: dict[str, SlotInfo]) -> None:
     p = _registry_path(paths)
-    p.write_text(
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(
         json.dumps({k: asdict(v) for k, v in registry.items()}, indent=2),
         encoding="utf-8",
     )
+    tmp.replace(p)
 
 
 def _is_alive(pid: int) -> bool:
@@ -54,11 +59,17 @@ def _is_alive(pid: int) -> bool:
     if os.name == "nt":
         import ctypes
         SYNCHRONIZE = 0x00100000
-        h = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
-        if h:
+        PROCESS_QUERY = 0x00000400
+        STILL_ACTIVE = 259
+        h = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY, False, pid)
+        if not h:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            ok = ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+            return bool(ok) and code.value == STILL_ACTIVE
+        finally:
             ctypes.windll.kernel32.CloseHandle(h)
-            return True
-        return False
     try:
         os.kill(pid, 0)
         return True
@@ -66,7 +77,7 @@ def _is_alive(pid: int) -> bool:
         return False
 
 
-def clean_dead_slots(paths) -> dict[str, SlotInfo]:
+def clean_dead_slots(paths: AppPaths) -> dict[str, SlotInfo]:
     """Remove slots whose PIDs are no longer alive. Returns cleaned registry."""
     registry = load_registry(paths)
     alive = {k: v for k, v in registry.items() if _is_alive(v.pid)}
@@ -77,19 +88,19 @@ def clean_dead_slots(paths) -> dict[str, SlotInfo]:
 
 def next_slot_id(registry: dict[str, SlotInfo]) -> str:
     """Find the lowest unused slot ID (as string integer)."""
-    for i in range(100):
+    for i in range(MAX_SLOTS):
         if str(i) not in registry:
             return str(i)
-    raise RuntimeError("Too many active mpv slots (max 100)")
+    raise RuntimeError(f"Too many active mpv slots (max {MAX_SLOTS})")
 
 
-def register_slot(paths, slot_id: str, pipe: str, pid: int) -> None:
+def register_slot(paths: AppPaths, slot_id: str, pipe: str, pid: int) -> None:
     registry = load_registry(paths)
     registry[slot_id] = SlotInfo(slot_id=slot_id, pipe=pipe, pid=pid)
     save_registry(paths, registry)
 
 
-def unregister_slot(paths, slot_id: str) -> None:
+def unregister_slot(paths: AppPaths, slot_id: str) -> None:
     registry = load_registry(paths)
-    registry.pop(slot_id, None)
-    save_registry(paths, registry)
+    if registry.pop(slot_id, None) is not None:
+        save_registry(paths, registry)
