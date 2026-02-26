@@ -227,7 +227,12 @@ def cmd_layer(args: argparse.Namespace) -> int:
     pipe = pipe_for_slot(slot_id)
 
     proc = launch_mpv(paths, targets, slot_id=slot_id)
-    register_slot(paths, slot_id, pipe, proc.pid)
+    try:
+        register_slot(paths, slot_id, pipe, proc.pid)
+    except Exception as exc:
+        proc.terminate()
+        print(f"Failed to register slot {slot_id}: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps({"ok": True, "action": "layer", "slot": slot_id, "pid": proc.pid, "pipe": pipe}, ensure_ascii=False))
     return 0
 
