@@ -255,6 +255,24 @@ def cmd_next(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stop(_args: argparse.Namespace) -> int:
+    client = MpvIpcClient(get_paths().mpv_pipe)
+    client.command(["quit"])
+    print(json.dumps({"ok": True, "action": "stop"}, ensure_ascii=False))
+    return 0
+
+
+def cmd_pause(_args: argparse.Namespace) -> int:
+    client = MpvIpcClient(get_paths().mpv_pipe)
+    client.command(["cycle", "pause"])
+    try:
+        client.show_text("PAUSE")
+    except MpvIpcError:
+        pass
+    print(json.dumps({"ok": True, "action": "pause"}, ensure_ascii=False))
+    return 0
+
+
 def cmd_doctor(_args: argparse.Namespace) -> int:
     paths = _ensure_ready()
     checks: dict[str, Any] = {
@@ -415,6 +433,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("current", help="Show current mpv track via IPC")
     p.set_defaults(func=cmd_current)
+
+    p = sub.add_parser("stop", help="Stop playback and quit mpv")
+    p.set_defaults(func=cmd_stop)
+
+    p = sub.add_parser("pause", help="Toggle pause/resume playback")
+    p.set_defaults(func=cmd_pause)
 
     p = sub.add_parser("good", help="Mark current track good")
     p.set_defaults(func=cmd_good)

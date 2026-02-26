@@ -18,6 +18,8 @@ KNOWN_COMMANDS = {
     "stats",
     "play",
     "current",
+    "stop",
+    "pause",
     "good",
     "bad",
     "next",
@@ -61,6 +63,14 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
         if "守护" in text or "daemon" in lower:
             return ParsedIntent(["daemon", "status"], "daemon status request")
         return ParsedIntent(["current"], "current track request")
+
+    # Stop / pause
+    if any(k in lower for k in ["停止播放", "关掉音乐", "关闭音乐", "stop music", "stop playing", "quit music", "退出播放"]):
+        return ParsedIntent(["stop"], "stop playback")
+    if lower in {"stop", "停止", "关掉", "关闭"}:
+        return ParsedIntent(["stop"], "stop playback")
+    if any(k in lower for k in ["暂停", "继续播放", "pause", "resume", "恢复播放"]):
+        return ParsedIntent(["pause"], "toggle pause")
 
     # Like/dislike/next
     if any(k in lower for k in ["这首好", "好歌", "喜欢这首", "mark good", "like this", "thumbs up"]):

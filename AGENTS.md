@@ -21,6 +21,8 @@ Run `m doctor` first. If all checks pass, the tool is ready. If not, see README.
 | `m good` | Mark currently playing track as liked | `m good` |
 | `m bad` | Mark currently playing track as disliked | `m bad` |
 | `m next` | Skip to next track | `m next` |
+| `m stop` | Stop playback and quit mpv | `m stop` |
+| `m pause` | Toggle pause / resume | `m pause` |
 | `m current` | Show what's playing now (JSON) | `m current` |
 | `m stats` | Show listening stats summary (JSON) | `m stats` |
 | `m daemon start` | Start background event sync daemon | `m daemon start` |
@@ -61,6 +63,12 @@ Music is playing and user says they like it?
 
 Music is playing and user wants to skip?
   → m next
+
+User wants to stop music entirely?
+  → m stop
+
+User wants to pause / resume?
+  → m pause
 
 User wants to know what's playing?
   → m current
