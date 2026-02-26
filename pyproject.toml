@@ -1,0 +1,20 @@
+[project]
+name = "musichub"
+version = "0.1.0"
+description = "Local music preference loop with mpv + yt-dlp + SQLite"
+requires-python = ">=3.11"
+dependencies = [
+    "yt-dlp",
+    "requests",
+]
+
+[project.optional-dependencies]
+recommend = [
+    "numpy",
+    "scipy",
+    "implicit",
+]
+
+[project.scripts]
+musicctl = "musichub.cli:main"
+m = "musichub.cli:main"
