@@ -1,0 +1,18 @@
+# User data (private, re-created at runtime)
+data/
+
+# Downloaded binaries (re-downloaded by install.ps1)
+tools/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Editor
+.vscode/
+.idea/
+*.swp
