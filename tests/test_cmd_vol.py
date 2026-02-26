@@ -25,14 +25,18 @@ def test_vol_sets_volume_on_slot():
 
     registry = {"0": SlotInfo("0", r"\\.\pipe\musichub-mpv", 1234)}
 
-    with patch("musichub.cli.get_paths"), \
+    with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli.clean_dead_slots", return_value=registry), \
-         patch("musichub.cli.MpvIpcClient", return_value=mock_client):
+         patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
+         patch("builtins.print") as mock_print:
 
         result = cmd_vol(_args("0", 70))
 
     assert result == 0
     mock_client.command.assert_called_once_with(["set_property", "volume", 70])
+    output = json.loads(mock_print.call_args[0][0])
+    assert output["ok"] is True
+    assert output["results"][0]["ok"] is True
 
 
 def test_vol_all_sets_all_slots():
@@ -44,20 +48,24 @@ def test_vol_all_sets_all_slots():
         "1": SlotInfo("1", r"\\.\pipe\musichub-mpv-1", 5678),
     }
 
-    with patch("musichub.cli.get_paths"), \
+    with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli.clean_dead_slots", return_value=registry), \
-         patch("musichub.cli.MpvIpcClient", return_value=mock_client):
+         patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
+         patch("builtins.print") as mock_print:
 
         result = cmd_vol(_args("all", 50))
 
     assert result == 0
     assert mock_client.command.call_count == 2
+    output = json.loads(mock_print.call_args[0][0])
+    assert output["ok"] is True
+    assert len(output["results"]) == 2
 
 
 def test_vol_invalid_slot_returns_error():
     registry = {"0": SlotInfo("0", r"\\.\pipe\musichub-mpv", 1234)}
 
-    with patch("musichub.cli.get_paths"), \
+    with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli.clean_dead_slots", return_value=registry):
 
         result = cmd_vol(_args("5", 70))
@@ -66,7 +74,7 @@ def test_vol_invalid_slot_returns_error():
 
 
 def test_vol_no_active_slots_returns_error():
-    with patch("musichub.cli.get_paths"), \
+    with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli.clean_dead_slots", return_value={}):
 
         result = cmd_vol(_args("0", 70))
@@ -81,7 +89,7 @@ def test_vol_clamps_level():
 
     registry = {"0": SlotInfo("0", r"\\.\pipe\musichub-mpv", 1234)}
 
-    with patch("musichub.cli.get_paths"), \
+    with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli.clean_dead_slots", return_value=registry), \
          patch("musichub.cli.MpvIpcClient", return_value=mock_client):
 
@@ -91,19 +99,20 @@ def test_vol_clamps_level():
 
 
 def test_vol_ipc_error_returns_ok_false():
-    """IPC failure per slot is reported but does not crash."""
+    """IPC failure per slot is reported; overall result is 1 (no slot succeeded)."""
     mock_client = MagicMock()
     mock_client.command.side_effect = MpvIpcError("pipe dead")
 
     registry = {"0": SlotInfo("0", r"\\.\pipe\musichub-mpv", 1234)}
 
-    with patch("musichub.cli.get_paths"), \
+    with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli.clean_dead_slots", return_value=registry), \
          patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
          patch("builtins.print") as mock_print:
 
         result = cmd_vol(_args("0", 70))
 
-    assert result == 0  # overall command succeeds
+    assert result == 1  # all slots failed -> non-zero exit
     output = json.loads(mock_print.call_args[0][0])
-    assert output[0]["ok"] is False
+    assert output["ok"] is False
+    assert output["results"][0]["ok"] is False
