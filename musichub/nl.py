@@ -77,13 +77,13 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
 
     # Layer / overlay
     if any(k in lower for k in ["叠加播放", "同时播放"]):
+        rest = text
         for prefix in ["叠加播放", "同时播放"]:
-            if text.startswith(prefix):
-                rest = text[len(prefix):].strip()
-                if rest:
-                    return ParsedIntent(["layer", rest], "layer overlay playback")
-                return ParsedIntent(["layer"], "layer overlay playback")
-        return ParsedIntent(["layer", text], "layer overlay playback")
+            idx = text.find(prefix)
+            if idx != -1:
+                rest = text[idx + len(prefix):].strip()
+                break
+        return ParsedIntent(["layer", rest] if rest else ["layer"], "layer overlay playback")
     if lower.startswith("layer "):
         return ParsedIntent(["layer", text[6:].strip()], "layer overlay playback")
 

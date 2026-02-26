@@ -243,7 +243,7 @@ def cmd_slots(_args: argparse.Namespace) -> int:
     registry = clean_dead_slots(paths)
 
     results = []
-    for slot_id, info in sorted(registry.items()):
+    for slot_id, info in sorted(registry.items(), key=lambda x: int(x[0])):
         entry: dict = {"slot": slot_id, "pid": info.pid, "pipe": info.pipe}
         client = MpvIpcClient(info.pipe, connect_timeout_sec=1.0)
         try:
@@ -340,14 +340,15 @@ def cmd_stop(args: argparse.Namespace) -> int:
         target = slot_arg or SLOT_PRIMARY
         info = registry.get(target)
         if info is None:
-            # Fallback: try primary pipe directly (backward compat when registry is empty)
-            client = MpvIpcClient(pipe_for_slot(SLOT_PRIMARY))
+            # Slot not in registry — try the pipe directly (handles fresh installs / deleted registry)
+            client = MpvIpcClient(pipe_for_slot(target))
             try:
                 client.command(["quit"])
+                unregister_slot(paths, target)  # no-op if already absent
             except MpvIpcError as exc:
                 print(str(exc), file=sys.stderr)
                 return 1
-            print(json.dumps({"ok": True, "action": "stop", "slot": SLOT_PRIMARY}, ensure_ascii=False))
+            print(json.dumps({"ok": True, "action": "stop", "slot": target}, ensure_ascii=False))
             return 0
         slots_to_stop = [info]
 
