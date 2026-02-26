@@ -18,13 +18,14 @@ def _args(target="https://youtu.be/abc"):
 
 
 def test_layer_always_launches_new_process():
-    """m layer always spawns a new mpv regardless of existing instances."""
+    """m layer spawns a new mpv alongside existing instances."""
     mock_proc = MagicMock()
     mock_proc.pid = 5678
+    existing = {"0": SlotInfo("0", r"\\.\pipe\musichub-mpv", 1234)}
 
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
-         patch("musichub.cli.clean_dead_slots", return_value={}), \
+         patch("musichub.cli.clean_dead_slots", return_value=existing), \
          patch("musichub.cli.launch_mpv", return_value=mock_proc) as mock_launch, \
          patch("musichub.cli.register_slot") as mock_register:
 
@@ -33,6 +34,17 @@ def test_layer_always_launches_new_process():
     assert result == 0
     mock_launch.assert_called_once()
     mock_register.assert_called_once()
+
+
+def test_layer_requires_existing_playback():
+    """m layer returns error if nothing is playing (empty registry)."""
+    with patch("musichub.cli._ensure_ready"), \
+         patch("musichub.cli._safe_sync_events"), \
+         patch("musichub.cli.clean_dead_slots", return_value={}):
+
+        result = cmd_layer(_args())
+
+    assert result == 1
 
 
 def test_layer_uses_next_available_slot():
@@ -72,10 +84,11 @@ def test_layer_outputs_slot_info():
     """m layer outputs JSON with slot, pid, pipe."""
     mock_proc = MagicMock()
     mock_proc.pid = 9999
+    existing = {"0": SlotInfo("0", r"\\.\pipe\musichub-mpv", 1234)}
 
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
-         patch("musichub.cli.clean_dead_slots", return_value={}), \
+         patch("musichub.cli.clean_dead_slots", return_value=existing), \
          patch("musichub.cli.launch_mpv", return_value=mock_proc), \
          patch("musichub.cli.register_slot"), \
          patch("builtins.print") as mock_print:
@@ -94,5 +107,5 @@ def test_layer_outputs_slot_info():
 
     assert json_output is not None
     assert json_output["action"] == "layer"
-    assert json_output["slot"] == "0"
+    assert json_output["slot"] == "1"
     assert json_output["pid"] == 9999

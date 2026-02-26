@@ -221,8 +221,11 @@ def cmd_layer(args: argparse.Namespace) -> int:
         print(f"Resolved search -> {url}")
         targets = [url]
 
-    # Find next available slot (slot 0 may already be primary)
+    # Require at least one active slot — layering implies something is already playing
     registry = clean_dead_slots(paths)
+    if not registry:
+        print("Nothing is playing. Start playback first with: m play <query>", file=sys.stderr)
+        return 1
     slot_id = next_slot_id(registry)
     pipe = pipe_for_slot(slot_id)
 
