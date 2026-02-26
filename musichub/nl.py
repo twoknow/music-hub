@@ -28,6 +28,9 @@ KNOWN_COMMANDS = {
     "ask",
     "doctor",
     "train",
+    "layer",
+    "vol",
+    "slots",
 }
 
 
@@ -71,6 +74,31 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
         return ParsedIntent(["stop"], "stop playback")
     if any(k in lower for k in ["暂停", "继续播放", "pause", "resume", "恢复播放"]):
         return ParsedIntent(["pause"], "toggle pause")
+
+    # Layer / overlay
+    if any(k in lower for k in ["叠加播放", "同时播放"]):
+        for prefix in ["叠加播放", "同时播放"]:
+            if text.startswith(prefix):
+                rest = text[len(prefix):].strip()
+                if rest:
+                    return ParsedIntent(["layer", rest], "layer overlay playback")
+                return ParsedIntent(["layer"], "layer overlay playback")
+        return ParsedIntent(["layer", text], "layer overlay playback")
+    if lower.startswith("layer "):
+        return ParsedIntent(["layer", text[6:].strip()], "layer overlay playback")
+
+    # Volume control: "vol 0 70" or "把X音量调到Y"
+    vol_match = re.search(r"(?:^vol\s+|把.*?|音量.*?)(\d+|all)\s+(\d+)", lower)
+    if vol_match:
+        return ParsedIntent(["vol", vol_match.group(1), vol_match.group(2)], "volume control")
+
+    # Slots list
+    if any(k in lower for k in ["查看槽位", "所有播放器", "所有slot", "list slots", "显示所有播放器"]):
+        return ParsedIntent(["slots"], "list active slots")
+
+    # Stop all
+    if any(k in lower for k in ["全部停止", "停止所有", "stop all", "全停"]):
+        return ParsedIntent(["stop", "all"], "stop all slots")
 
     # Like/dislike/next
     if any(k in lower for k in ["这首好", "好歌", "喜欢这首", "mark good", "like this", "thumbs up"]):

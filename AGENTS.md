@@ -21,7 +21,11 @@ Run `m doctor` first. If all checks pass, the tool is ready. If not, see README.
 | `m good` | Mark currently playing track as liked | `m good` |
 | `m bad` | Mark currently playing track as disliked | `m bad` |
 | `m next` | Skip to next track | `m next` |
-| `m stop` | Stop playback and quit mpv | `m stop` |
+| `m layer "<query>"` | Start a new mpv instance alongside existing (overlay) | `m layer "白噪音"` |
+| `m vol <slot> <level>` | Set volume for a slot (0-130, 100=normal) | `m vol 0 70` |
+| `m vol all <level>` | Set volume for all active slots | `m vol all 60` |
+| `m slots` | List all active mpv instances with current track | `m slots` |
+| `m stop [slot]` | Stop a specific slot (default: 0) or all | `m stop all` |
 | `m pause` | Toggle pause / resume | `m pause` |
 | `m current` | Show what's playing now (JSON) | `m current` |
 | `m stats` | Show listening stats summary (JSON) | `m stats` |
@@ -66,6 +70,18 @@ Music is playing and user wants to skip?
 
 User wants to stop music entirely?
   → m stop
+
+User wants to overlay music on top of what's playing?
+  → m layer "<query>"
+
+User wants to adjust volume of a specific stream?
+  → m vol <slot> <level>
+
+User wants to see all active streams?
+  → m slots
+
+User wants to stop everything?
+  → m stop all
 
 User wants to pause / resume?
   → m pause

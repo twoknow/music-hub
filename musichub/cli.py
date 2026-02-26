@@ -237,6 +237,27 @@ def cmd_layer(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_slots(_args: argparse.Namespace) -> int:
+    """List all active mpv slots with current track info."""
+    paths = _ensure_ready()
+    registry = clean_dead_slots(paths)
+
+    results = []
+    for slot_id, info in sorted(registry.items()):
+        entry: dict = {"slot": slot_id, "pid": info.pid, "pipe": info.pipe}
+        client = MpvIpcClient(info.pipe, connect_timeout_sec=1.0)
+        try:
+            entry["title"] = client.get_property("media-title")
+            entry["volume"] = client.get_property("volume")
+        except MpvIpcError:
+            entry["title"] = None
+            entry["volume"] = None
+        results.append(entry)
+
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_current(_args: argparse.Namespace) -> int:
     client = MpvIpcClient(get_paths().mpv_pipe)
     print(json.dumps(_get_mpv_snapshot(client), ensure_ascii=False, indent=2))
@@ -307,11 +328,47 @@ def cmd_next(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_stop(_args: argparse.Namespace) -> int:
-    client = MpvIpcClient(get_paths().mpv_pipe)
-    client.command(["quit"])
-    print(json.dumps({"ok": True, "action": "stop"}, ensure_ascii=False))
-    return 0
+def cmd_stop(args: argparse.Namespace) -> int:
+    """Stop playback. Defaults to slot 0. Use 'all' to stop everything."""
+    paths = _ensure_ready()
+    registry = clean_dead_slots(paths)
+    slot_arg = getattr(args, "slot", None)
+
+    if slot_arg == "all":
+        slots_to_stop = list(registry.values())
+    else:
+        target = slot_arg or SLOT_PRIMARY
+        info = registry.get(target)
+        if info is None:
+            # Fallback: try primary pipe directly (backward compat when registry is empty)
+            client = MpvIpcClient(pipe_for_slot(SLOT_PRIMARY))
+            try:
+                client.command(["quit"])
+            except MpvIpcError as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+            print(json.dumps({"ok": True, "action": "stop", "slot": SLOT_PRIMARY}, ensure_ascii=False))
+            return 0
+        slots_to_stop = [info]
+
+    if not slots_to_stop:
+        print(json.dumps({"ok": False, "action": "stop", "error": "no active slots"}, ensure_ascii=False))
+        return 1
+
+    results = []
+    for info in slots_to_stop:
+        client = MpvIpcClient(info.pipe)
+        try:
+            client.command(["quit"])
+            unregister_slot(paths, info.slot_id)
+            results.append({"slot": info.slot_id, "ok": True})
+        except MpvIpcError as exc:
+            unregister_slot(paths, info.slot_id)  # clean registry anyway
+            results.append({"slot": info.slot_id, "ok": False, "error": str(exc)})
+
+    output = results[0] if len(results) == 1 else {"ok": all(r["ok"] for r in results), "results": results}
+    print(json.dumps(output, ensure_ascii=False))
+    return 0 if all(r["ok"] for r in results) else 1
 
 
 def cmd_pause(_args: argparse.Namespace) -> int:
@@ -525,7 +582,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("current", help="Show current mpv track via IPC")
     p.set_defaults(func=cmd_current)
 
-    p = sub.add_parser("stop", help="Stop playback and quit mpv")
+    p = sub.add_parser("stop", help="Stop playback (specify slot or 'all'; default: slot 0)")
+    p.add_argument("slot", nargs="?", default=None, help="Slot ID, 'all', or omit for slot 0")
     p.set_defaults(func=cmd_stop)
 
     p = sub.add_parser("pause", help="Toggle pause/resume playback")
@@ -535,6 +593,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("slot", nargs="?", default=SLOT_PRIMARY, help="Slot ID or 'all'")
     p.add_argument("level", type=int, help="Volume level 0-130")
     p.set_defaults(func=cmd_vol)
+
+    p = sub.add_parser("slots", help="List active mpv instances")
+    p.set_defaults(func=cmd_slots)
 
     p = sub.add_parser("good", help="Mark current track good")
     p.set_defaults(func=cmd_good)
