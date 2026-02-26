@@ -49,8 +49,11 @@ def launch_mpv(paths: AppPaths, targets: list[str]) -> subprocess.Popen[str]:
         f"--script-opts=musichub-events_file={paths.events_jsonl}",
         "--ytdl=yes",
     ]
+    args.extend(targets)
+    # Ensure yt-dlp is findable by mpv's ytdl hook by prepending its directory to PATH
+    env = os.environ.copy()
     ytdlp = _resolve_ytdlp(mpv_exe)
     if ytdlp:
-        args.append(f"--ytdl-path={ytdlp}")
-    args.extend(targets)
-    return subprocess.Popen(args)
+        ytdlp_dir = str(Path(ytdlp).parent)
+        env["PATH"] = ytdlp_dir + os.pathsep + env.get("PATH", "")
+    return subprocess.Popen(args, env=env)
