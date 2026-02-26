@@ -19,6 +19,10 @@ from .importers import import_ncm_json, import_ytm_live, import_json_file
 from .models import train_implicit_cache
 from .mpv_control import launch_mpv, resolve_mpv_exe
 from .mpv_ipc import MpvIpcClient, MpvIpcError
+from .slots import (
+    clean_dead_slots, next_slot_id, pipe_for_slot,
+    register_slot, unregister_slot, SLOT_PRIMARY,
+)
 from .nl import maybe_extract_direct_command, parse_freeform
 from .recommender import recommend as get_recommendations
 
@@ -180,7 +184,21 @@ def cmd_play(args: argparse.Namespace) -> int:
                     continue
                 print(f"{i:2d}. {r.title} - {r.artist or '<unknown>'} | engine={r.engine} | why={r.reason or '-'}")
 
-    proc = launch_mpv(paths, targets)
+    # Try to reuse existing mpv instance via IPC (replace mode)
+    primary_pipe = pipe_for_slot(SLOT_PRIMARY)
+    client = MpvIpcClient(primary_pipe, connect_timeout_sec=1.0)
+    try:
+        client.command(["loadfile", targets[0], "replace"])
+        for t in targets[1:]:
+            client.command(["loadfile", t, "append"])
+        print(json.dumps({"ok": True, "action": "replace", "slot": SLOT_PRIMARY, "targets": targets}, ensure_ascii=False))
+        return 0
+    except MpvIpcError:
+        pass  # mpv not running — launch fresh
+
+    # Launch new mpv on slot 0
+    proc = launch_mpv(paths, targets, slot_id=SLOT_PRIMARY)
+    register_slot(paths, SLOT_PRIMARY, primary_pipe, proc.pid)
     print(f"mpv started (pid={proc.pid})")
     return 0
 

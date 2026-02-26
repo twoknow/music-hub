@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .config import AppPaths, ensure_dirs
+from .slots import pipe_for_slot
 
 
 def _resolve_ytdlp(mpv_exe: str) -> str | None:
@@ -38,13 +39,13 @@ def resolve_mpv_exe(paths: AppPaths) -> str:
     )
 
 
-def launch_mpv(paths: AppPaths, targets: list[str]) -> subprocess.Popen[str]:
+def launch_mpv(paths: AppPaths, targets: list[str], slot_id: str = "0") -> subprocess.Popen[str]:
     ensure_dirs(paths)
     mpv_exe = resolve_mpv_exe(paths)
     args = [
         mpv_exe,
         "--no-video",
-        f"--input-ipc-server={paths.mpv_pipe}",
+        f"--input-ipc-server={pipe_for_slot(slot_id)}",
         f"--script={paths.mpv_script}",
         f"--script-opts=musichub-events_file={paths.events_jsonl}",
         "--ytdl=yes",
