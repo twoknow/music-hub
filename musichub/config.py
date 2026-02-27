@@ -50,7 +50,7 @@ def get_paths() -> AppPaths:
         model_meta_file=(base / "models" / "model_meta.json"),
         mpv_pipe=r"\\.\pipe\musichub-mpv",
         mpv_script=project_root() / "mpv-scripts" / "musichub.lua",
-        mpv_exe_hint=(Path.home() / "tools" / "mpv-portable" / "mpv.exe"),
+        mpv_exe_hint=(project_root() / "mpv-portable" / "mpv.exe"),
     )
 
 

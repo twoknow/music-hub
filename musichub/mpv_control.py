@@ -29,8 +29,13 @@ def resolve_mpv_exe(paths: AppPaths) -> str:
     env_override = os.environ.get("MUSICHUB_MPV_EXE")
     if env_override:
         return env_override
+    # Repo-local portable (gitignored; present when bundled or manually placed)
     if paths.mpv_exe_hint.exists():
         return str(paths.mpv_exe_hint)
+    # install.ps1 downloads mpv here for fresh installs
+    installed = Path.home() / "tools" / "mpv-portable" / "mpv.exe"
+    if installed.exists():
+        return str(installed)
     on_path = shutil.which("mpv")
     if on_path:
         return on_path
