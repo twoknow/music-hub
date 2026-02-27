@@ -12,7 +12,7 @@ from musichub.mpv_ipc import MpvIpcError
 
 def _args(target="https://youtu.be/test123"):
     ns = argparse.Namespace()
-    ns.target = target
+    ns.target = [target] if target else []
     ns.queue = 5
     ns.engine = "auto"
     ns.why = False

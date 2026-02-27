@@ -13,7 +13,7 @@ from musichub.slots import SlotInfo
 
 def _args(target="https://youtu.be/abc"):
     ns = argparse.Namespace()
-    ns.target = target
+    ns.target = [target] if target else []
     return ns
 
 
@@ -71,7 +71,7 @@ def test_layer_uses_next_available_slot():
 def test_layer_no_target_returns_error():
     """m layer without target prints usage and returns 1."""
     ns = argparse.Namespace()
-    ns.target = None
+    ns.target = []
 
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"):

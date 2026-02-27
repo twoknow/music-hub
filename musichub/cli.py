@@ -160,12 +160,13 @@ def cmd_play(args: argparse.Namespace) -> int:
     _safe_sync_events(paths)
 
     if args.target:
-        if _is_url(args.target):
-            targets = [args.target]
-        elif Path(args.target).expanduser().exists():
-            targets = [str(Path(args.target).expanduser().resolve())]
+        query = " ".join(args.target)
+        if _is_url(query):
+            targets = [query]
+        elif Path(query).expanduser().exists():
+            targets = [str(Path(query).expanduser().resolve())]
         else:
-            url = _run_yt_dlp_print_url(args.target)
+            url = _run_yt_dlp_print_url(query)
             print(f"Resolved search -> {url}")
             targets = [url]
     else:
@@ -212,12 +213,13 @@ def cmd_layer(args: argparse.Namespace) -> int:
         print("Usage: m layer <URL or search query>", file=sys.stderr)
         return 1
 
-    if _is_url(args.target):
-        targets = [args.target]
-    elif Path(args.target).expanduser().exists():
-        targets = [str(Path(args.target).expanduser().resolve())]
+    query = " ".join(args.target)
+    if _is_url(query):
+        targets = [query]
+    elif Path(query).expanduser().exists():
+        targets = [str(Path(query).expanduser().resolve())]
     else:
-        url = _run_yt_dlp_print_url(args.target)
+        url = _run_yt_dlp_print_url(query)
         print(f"Resolved search -> {url}")
         targets = [url]
 
@@ -573,14 +575,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("play", help="Play URL/query or recommendation queue")
-    p.add_argument("target", nargs="?", help="URL, local file path, or search query")
+    p.add_argument("target", nargs="*", help="URL, local file path, or search query")
     p.add_argument("--queue", type=int, default=5)
     p.add_argument("--engine", choices=["auto", "rule", "implicit"], default="auto")
     p.add_argument("--why", action="store_true", help="Show queue reasons before playback")
     p.set_defaults(func=cmd_play)
 
     p = sub.add_parser("layer", help="Layer a new mpv instance alongside existing ones")
-    p.add_argument("target", nargs="?", help="URL or search query")
+    p.add_argument("target", nargs="*", help="URL or search query")
     p.set_defaults(func=cmd_layer)
 
     p = sub.add_parser("current", help="Show current mpv track via IPC")
