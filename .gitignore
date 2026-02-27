@@ -3,6 +3,7 @@ data/
 
 # Downloaded binaries (re-downloaded by install.ps1)
 tools/
+mpv-portable/
 
 # Python
 __pycache__/
