@@ -86,6 +86,11 @@ def _is_alive(pid: int) -> bool:
         return False
 
 
+def pid_is_alive(pid: int) -> bool:
+    """Public wrapper used by CLI recovery/cleanup flows."""
+    return _is_alive(pid)
+
+
 def clean_dead_slots(paths: AppPaths) -> dict[str, SlotInfo]:
     """Remove slots whose PIDs are no longer alive. Returns cleaned registry."""
     registry = load_registry(paths)

@@ -40,20 +40,16 @@ def test_play_launches_when_no_mpv():
     """When no mpv running, a new process is launched and registered."""
     mock_client = MagicMock()
     mock_client.command.side_effect = MpvIpcError("no mpv")
-    mock_proc = MagicMock()
-    mock_proc.pid = 1234
 
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
          patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
-         patch("musichub.cli.launch_mpv", return_value=mock_proc) as mock_launch, \
-         patch("musichub.cli.register_slot") as mock_register:
+         patch("musichub.cli._restart_slot_with_targets") as mock_restart:
 
         result = cmd_play(_args())
 
     assert result == 0
-    mock_launch.assert_called_once()
-    mock_register.assert_called_once()
+    mock_restart.assert_called_once()
 
 
 def test_play_multiple_targets_appends():

@@ -27,6 +27,7 @@ from .slots import (
     active_slot_info,
     clean_dead_slots,
     next_slot_id,
+    pid_is_alive,
     pipe_for_slot,
     register_slot,
     unregister_slot,
@@ -58,21 +59,27 @@ def _snapshot_mpv_slot(paths, slot_id: str) -> dict[str, Any]:
     if not info:
         return {}
 
+    def _optional_property(client: MpvIpcClient, name: str, default: Any = None) -> Any:
+        try:
+            return client.get_property(name)
+        except MpvIpcError:
+            return default
+
     for attempt in range(3):
         client = MpvIpcClient(info.pipe)
         try:
             path = client.get_property("path")
             if path:
-                metadata = client.get_property("metadata")
+                metadata = _optional_property(client, "metadata", {})
                 return {
                     "path": path,
-                    "media_title": client.get_property("media-title"),
-                    "duration": client.get_property("duration"),
-                    "time_pos": client.get_property("time-pos"),
-                    "chapter": client.get_property("chapter"),
-                    "chapter_metadata": client.get_property("chapter-metadata"),
-                    "playlist_pos": client.get_property("playlist-pos"),
-                    "playlist_count": client.get_property("playlist-count"),
+                    "media_title": _optional_property(client, "media-title"),
+                    "duration": _optional_property(client, "duration"),
+                    "time_pos": _optional_property(client, "time-pos"),
+                    "chapter": _optional_property(client, "chapter"),
+                    "chapter_metadata": _optional_property(client, "chapter-metadata"),
+                    "playlist_pos": _optional_property(client, "playlist-pos"),
+                    "playlist_count": _optional_property(client, "playlist-count"),
                     "metadata": metadata if isinstance(metadata, dict) else {},
                 }
         except Exception:
@@ -80,6 +87,153 @@ def _snapshot_mpv_slot(paths, slot_id: str) -> dict[str, Any]:
             continue
 
     return {}
+
+
+def _wait_for_pid_exit(pid: int, timeout_sec: float = 2.0) -> bool:
+    deadline = time.time() + max(timeout_sec, 0.0)
+    while time.time() < deadline:
+        if not pid_is_alive(pid):
+            return True
+        time.sleep(0.1)
+    return not pid_is_alive(pid)
+
+
+def _kill_pid(pid: int) -> bool:
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/F", "/T"],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+        else:
+            os.kill(pid, 9)
+    except Exception:
+        pass
+    return _wait_for_pid_exit(pid, timeout_sec=2.0)
+
+
+def _stop_slot_instance(paths, slot_id: str, info, *, unregister: bool = True) -> bool:
+    stopped = False
+    try:
+        MpvIpcClient(info.pipe).command(["quit"])
+        stopped = _wait_for_pid_exit(info.pid, timeout_sec=1.5)
+    except MpvIpcError:
+        stopped = False
+
+    if not stopped:
+        stopped = _kill_pid(info.pid)
+
+    if stopped and unregister:
+        unregister_slot(paths, slot_id)
+    return stopped
+
+
+def _wait_for_slot_ipc(pipe: str, timeout_sec: float = 4.0) -> None:
+    deadline = time.time() + max(timeout_sec, 0.5)
+    last_err: Exception | None = None
+    while time.time() < deadline:
+        try:
+            resp = MpvIpcClient(pipe, connect_timeout_sec=0.25).command(["get_property", "playlist-count"], timeout_sec=0.5)
+            if resp.get("error") in {None, "success"}:
+                return
+            last_err = MpvIpcError(f"mpv IPC returned error for {pipe}: {resp}")
+        except Exception as exc:
+            last_err = exc
+        time.sleep(0.1)
+    raise MpvIpcError(f"Timed out waiting for slot IPC at {pipe}: {last_err}")
+
+
+def _launch_registered_slot(paths, targets: list[str], *, slot_id: str = SLOT_PRIMARY):
+    proc = launch_mpv(paths, targets, slot_id=slot_id)
+    pipe = pipe_for_slot(slot_id, paths)
+    try:
+        _wait_for_slot_ipc(pipe)
+    except Exception as exc:
+        _kill_pid(int(proc.pid))
+        raise MpvIpcError(f"mpv failed to take slot {slot_id!r}") from exc
+    register_slot(paths, slot_id, pipe, int(proc.pid))
+    return proc
+
+
+def _restart_slot_with_targets(paths, slot_id: str, targets: list[str]):
+    info = active_slot_info(paths, slot_id)
+    if info is not None and not _stop_slot_instance(paths, slot_id, info):
+        raise MpvIpcError(f"Unable to stop existing slot {slot_id!r} before restart")
+    return _launch_registered_slot(paths, targets, slot_id=slot_id)
+
+
+def _list_profile_mpv_pids(paths) -> list[int]:
+    markers = [str(paths.mpv_pipe).casefold(), str(paths.events_jsonl).casefold()]
+    try:
+        if os.name == "nt":
+            proc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_Process -Filter \"Name = 'mpv.exe'\" | "
+                    "Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            raw = proc.stdout.strip()
+            if proc.returncode != 0 or not raw or raw == "null":
+                return []
+            data = json.loads(raw)
+        else:
+            proc = subprocess.run(
+                ["ps", "-ax", "-o", "pid=,command="],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if proc.returncode != 0:
+                return []
+            data = []
+            for line in proc.stdout.splitlines():
+                parts = line.strip().split(None, 1)
+                if len(parts) != 2:
+                    continue
+                try:
+                    pid = int(parts[0])
+                except ValueError:
+                    continue
+                data.append({"ProcessId": pid, "CommandLine": parts[1]})
+    except Exception:
+        return []
+
+    if isinstance(data, dict):
+        rows = [data]
+    elif isinstance(data, list):
+        rows = data
+    else:
+        rows = []
+
+    out: list[int] = []
+    for row in rows:
+        try:
+            pid = int(row.get("ProcessId"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        cmdline = str(row.get("CommandLine") or "").casefold()
+        if any(marker and marker in cmdline for marker in markers):
+            out.append(pid)
+    return sorted(set(out))
+
+
+def _stop_profile_orphans(paths, known_pids: set[int]) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for pid in _list_profile_mpv_pids(paths):
+        if pid in known_pids:
+            continue
+        results.append({"slot": "orphan", "pid": pid, "ok": _kill_pid(pid)})
+    return results
 
 
 def _run_single_provider_search(query: str, prefix: str, suffix: str, limit: int) -> list[str]:
@@ -188,7 +342,23 @@ def _get_yt_related_urls(url: str, limit: int = 5) -> list[str]:
     ]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        return [line.strip() for line in proc.stdout.splitlines() if line.strip().startswith("http")]
+        out: list[str] = []
+        seen: set[str] = set()
+        for line in proc.stdout.splitlines():
+            candidate = line.strip()
+            if not candidate.startswith("http"):
+                continue
+            candidate_canonical = _canonical_youtube_watch_url(candidate)
+            if canonical and candidate_canonical == canonical:
+                continue
+            dedupe_key = candidate_canonical or candidate
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            out.append(candidate)
+            if len(out) >= limit:
+                break
+        return out
     except Exception:
         return []
 
@@ -352,8 +522,10 @@ def _recover_next_playback(paths, slot_id: str) -> tuple[bool, str | None]:
     if not target_url:
         return False, None
 
-    proc = launch_mpv(paths, [target_url], slot_id=slot_id)
-    register_slot(paths, slot_id, pipe_for_slot(slot_id, paths), int(proc.pid))
+    try:
+        _restart_slot_with_targets(paths, slot_id, [target_url])
+    except MpvIpcError:
+        return False, None
     return True, target_url
 
 
@@ -463,8 +635,7 @@ def cmd_radio(args: argparse.Namespace) -> int:
             client = MpvIpcClient(pipe_for_slot(SLOT_PRIMARY, paths))
             _load_targets_into_client(client, related)
         except MpvIpcError:
-            proc = launch_mpv(paths, related)
-            register_slot(paths, SLOT_PRIMARY, pipe_for_slot(SLOT_PRIMARY, paths), int(proc.pid))
+            _restart_slot_with_targets(paths, SLOT_PRIMARY, related)
 
     print(json.dumps({"ok": True, "action": "radio", "mode": mode, "targets": related}, ensure_ascii=False))
     return 0
@@ -634,8 +805,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         _load_targets_into_client(client, target_urls)
         reused_existing = True
     except MpvIpcError:
-        proc = launch_mpv(paths, target_urls)
-        register_slot(paths, SLOT_PRIMARY, pipe_for_slot(SLOT_PRIMARY, paths), int(proc.pid))
+        _restart_slot_with_targets(paths, SLOT_PRIMARY, target_urls)
 
     print(
         json.dumps(
@@ -664,8 +834,7 @@ def cmd_layer(args: argparse.Namespace) -> int:
 
     slot_id = next_slot_id(registry)
 
-    proc = launch_mpv(paths, [url], slot_id=slot_id)
-    register_slot(paths, slot_id, pipe_for_slot(slot_id, paths), int(proc.pid))
+    proc = _launch_registered_slot(paths, [url], slot_id=slot_id)
 
     print(
         json.dumps(
@@ -717,30 +886,20 @@ def cmd_stop(args: argparse.Namespace) -> int:
             slots_to_stop = [args.slot]
 
     if not slots_to_stop:
+        if args.slot == "all":
+            results = _stop_profile_orphans(paths, set())
+            print(json.dumps({"ok": all(r["ok"] for r in results), "results": results}, ensure_ascii=False))
+            return 0 if all(r["ok"] for r in results) else 1
         return 0
 
     results = []
     for sid in slots_to_stop:
         info = registry[sid]
-        client = MpvIpcClient(info.pipe)
-        stopped = False
-        try:
-            client.command(["quit"])
-            stopped = True
-        except MpvIpcError:
-            # If IPC fails, try killing by PID directly
-            try:
-                if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(info.pid), "/F"], capture_output=True)
-                else:
-                    os.kill(info.pid, 9)
-                stopped = True
-            except Exception:
-                pass
+        results.append({"slot": sid, "pid": info.pid, "ok": _stop_slot_instance(paths, sid, info)})
 
-        if stopped:
-            unregister_slot(paths, sid)
-        results.append({"slot": sid, "ok": stopped})
+    if args.slot == "all":
+        known_pids = {info.pid for info in registry.values()}
+        results.extend(_stop_profile_orphans(paths, known_pids))
 
     print(json.dumps({"ok": all(r["ok"] for r in results), "results": results}, ensure_ascii=False))
     return 0 if all(r["ok"] for r in results) else 1
@@ -961,13 +1120,10 @@ def cmd_session_load(args: argparse.Namespace) -> int:
         if not snap.get("path"):
             continue
         try:
-            _, pipe = _resolve_slot_pipe(paths, sid)
-            MpvIpcClient(pipe).command(["quit"])
-            time.sleep(0.5)
-        except Exception:
-            pass
-        proc = launch_mpv(paths, [snap["path"]], slot_id=sid)
-        register_slot(paths, sid, pipe_for_slot(sid, paths), int(proc.pid))
+            _restart_slot_with_targets(paths, sid, [snap["path"]])
+        except MpvIpcError:
+            print(json.dumps({"ok": False, "error": f"Could not restore slot {sid!r}"}))
+            return 1
 
     print(json.dumps({"ok": True, "session": args.name, "slots": list(session.keys())}))
     return 0

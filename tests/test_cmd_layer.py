@@ -26,14 +26,12 @@ def test_layer_always_launches_new_process():
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
          patch("musichub.cli.clean_dead_slots", return_value=existing), \
-         patch("musichub.cli.launch_mpv", return_value=mock_proc) as mock_launch, \
-         patch("musichub.cli.register_slot") as mock_register:
+         patch("musichub.cli._launch_registered_slot", return_value=mock_proc) as mock_launch:
 
         result = cmd_layer(_args())
 
     assert result == 0
     mock_launch.assert_called_once()
-    mock_register.assert_called_once()
 
 
 def test_layer_requires_existing_playback():
@@ -56,8 +54,7 @@ def test_layer_uses_next_available_slot():
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
          patch("musichub.cli.clean_dead_slots", return_value=existing), \
-         patch("musichub.cli.launch_mpv", return_value=mock_proc) as mock_launch, \
-         patch("musichub.cli.register_slot") as mock_register:
+         patch("musichub.cli._launch_registered_slot", return_value=mock_proc) as mock_launch:
 
         result = cmd_layer(_args())
 
@@ -65,7 +62,6 @@ def test_layer_uses_next_available_slot():
     # Should use slot "1"
     call_kwargs = mock_launch.call_args
     assert call_kwargs[1]["slot_id"] == "1" or call_kwargs[0][2] == "1"
-    mock_register.assert_called_once()
 
 
 def test_layer_no_target_returns_error():
@@ -89,8 +85,7 @@ def test_layer_outputs_slot_info():
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
          patch("musichub.cli.clean_dead_slots", return_value=existing), \
-         patch("musichub.cli.launch_mpv", return_value=mock_proc), \
-         patch("musichub.cli.register_slot"), \
+         patch("musichub.cli._launch_registered_slot", return_value=mock_proc), \
          patch("builtins.print") as mock_print:
 
         result = cmd_layer(_args())

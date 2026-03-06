@@ -6,7 +6,7 @@ import argparse
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from musichub.cli import cmd_next
+from musichub.cli import _recover_next_playback, cmd_next
 from musichub.mpv_ipc import MpvIpcError
 
 
@@ -82,3 +82,23 @@ def test_next_returns_error_when_recovery_fails():
         result = cmd_next(_args())
 
     assert result == 1
+
+
+def test_recover_next_playback_restarts_slot_before_launch():
+    mock_paths = MagicMock()
+    mock_ctx = MagicMock()
+    mock_conn = MagicMock()
+    mock_ctx.__enter__.return_value = mock_conn
+    mock_ctx.__exit__.return_value = None
+    rec_item = MagicMock()
+    rec_item.source_url = "https://youtu.be/recovered"
+
+    with patch("musichub.cli.db.connect", return_value=mock_ctx), \
+         patch("musichub.cli.recommend", return_value=[rec_item]), \
+         patch("musichub.cli._restart_slot_with_targets") as mock_restart:
+
+        recovered, target = _recover_next_playback(mock_paths, "0")
+
+    assert recovered is True
+    assert target == "https://youtu.be/recovered"
+    mock_restart.assert_called_once_with(mock_paths, "0", ["https://youtu.be/recovered"])

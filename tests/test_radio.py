@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from musichub.cli import _canonical_youtube_watch_url, _extract_youtube_video_id, cmd_radio
+from musichub.cli import _canonical_youtube_watch_url, _extract_youtube_video_id, _get_yt_related_urls, cmd_radio
 
 
 def _args(limit=3):
@@ -83,3 +83,20 @@ def test_radio_uses_search_seed_when_good_history_url_is_invalid():
     payload = json.loads(mock_print.call_args_list[-1][0][0])
     assert payload["ok"] is True
     assert payload["targets"] == ["https://youtu.be/abcdefghijk"]
+
+
+def test_get_yt_related_urls_filters_seed_url_and_duplicates():
+    mock_proc = MagicMock()
+    mock_proc.stdout = "\n".join(
+        [
+            "https://www.youtube.com/watch?v=83zDU4of-co",
+            "https://youtu.be/83zDU4of-co",
+            "https://www.youtube.com/watch?v=VM8DHYeCvSE",
+            "https://www.youtube.com/watch?v=VM8DHYeCvSE",
+        ]
+    )
+
+    with patch("musichub.cli.subprocess.run", return_value=mock_proc):
+        urls = _get_yt_related_urls("https://www.youtube.com/watch?v=83zDU4of-co", limit=5)
+
+    assert urls == ["https://www.youtube.com/watch?v=VM8DHYeCvSE"]
