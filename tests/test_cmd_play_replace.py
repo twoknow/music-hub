@@ -27,11 +27,13 @@ def test_play_replaces_existing_mpv():
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
          patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
+         patch("musichub.cli._maybe_apply_playback_prefs_to_client") as mock_sync, \
          patch("musichub.cli.launch_mpv") as mock_launch:
 
         result = cmd_play(_args())
 
     assert result == 0
+    mock_sync.assert_called_once()
     mock_client.command.assert_called_once_with(["loadfile", "https://youtu.be/test123", "replace"])
     mock_launch.assert_not_called()
 
@@ -67,8 +69,8 @@ def test_play_multiple_targets_appends():
         result = cmd_play(_args("https://youtu.be/one"))
 
     assert result == 0
-    # Only one target: only loadfile replace
-    assert mock_client.command.call_count == 1
+    assert mock_client.command.call_count == 2
+    assert mock_client.command.call_args_list[-1].args[0] == ["loadfile", "https://youtu.be/one", "replace"]
 
 
 def test_play_search_query_uses_queue_and_appends():
@@ -80,6 +82,7 @@ def test_play_search_query_uses_queue_and_appends():
     with patch("musichub.cli._ensure_ready"), \
          patch("musichub.cli._safe_sync_events"), \
          patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
+         patch("musichub.cli._maybe_apply_playback_prefs_to_client"), \
          patch("musichub.cli._run_yt_dlp_search_urls", return_value=resolved), \
          patch("musichub.cli.launch_mpv"):
 

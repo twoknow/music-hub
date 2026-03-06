@@ -21,6 +21,13 @@ from .models import train_implicit_cache
 from .mpv_control import launch_mpv, resolve_mpv_exe
 from .mpv_ipc import MpvIpcClient, MpvIpcError
 from .nl import maybe_extract_direct_command, parse_freeform
+from .playback_prefs import (
+    PlaybackPrefs,
+    af_property_value,
+    load_playback_prefs,
+    loudnorm_enabled_from_af,
+    save_playback_prefs,
+)
 from .recommender import RecItem, recommend
 from .slots import (
     SLOT_PRIMARY,
@@ -234,6 +241,19 @@ def _stop_profile_orphans(paths, known_pids: set[int]) -> list[dict[str, Any]]:
             continue
         results.append({"slot": "orphan", "pid": pid, "ok": _kill_pid(pid)})
     return results
+
+
+def _apply_playback_prefs_to_client(client: MpvIpcClient, prefs: PlaybackPrefs) -> None:
+    resp = client.command(["set_property", "af", af_property_value(prefs)])
+    if resp.get("error") not in {None, "success"}:
+        raise MpvIpcError(f"mpv set_property 'af' failed: {resp}")
+
+
+def _maybe_apply_playback_prefs_to_client(paths, client: MpvIpcClient) -> None:
+    try:
+        _apply_playback_prefs_to_client(client, load_playback_prefs(paths))
+    except MpvIpcError:
+        pass
 
 
 def _run_single_provider_search(query: str, prefix: str, suffix: str, limit: int) -> list[str]:
@@ -625,6 +645,7 @@ def cmd_radio(args: argparse.Namespace) -> int:
     mode = "replace"
     if snap and active_slot_info(paths, SLOT_PRIMARY) is not None:
         client = MpvIpcClient(pipe_for_slot(SLOT_PRIMARY, paths))
+        _maybe_apply_playback_prefs_to_client(paths, client)
         for url in related:
             resp = client.command(["loadfile", url, "append"])
             if resp.get("error") not in {None, "success"}:
@@ -633,6 +654,7 @@ def cmd_radio(args: argparse.Namespace) -> int:
     else:
         try:
             client = MpvIpcClient(pipe_for_slot(SLOT_PRIMARY, paths))
+            _maybe_apply_playback_prefs_to_client(paths, client)
             _load_targets_into_client(client, related)
         except MpvIpcError:
             _restart_slot_with_targets(paths, SLOT_PRIMARY, related)
@@ -802,6 +824,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     reused_existing = False
     try:
         client = MpvIpcClient(pipe_for_slot(SLOT_PRIMARY, paths))
+        _maybe_apply_playback_prefs_to_client(paths, client)
         _load_targets_into_client(client, target_urls)
         reused_existing = True
     except MpvIpcError:
@@ -962,6 +985,8 @@ def cmd_next(args: argparse.Namespace) -> int:
             return 1
         print(json.dumps({"ok": True, "recovered": True, "target": target_url, "slot": slot_id}, ensure_ascii=False))
         return 0
+
+    _maybe_apply_playback_prefs_to_client(paths, client)
 
     playlist_pos = snap.get("playlist_pos")
     playlist_count = snap.get("playlist_count")
@@ -1171,6 +1196,7 @@ def cmd_commands(_args: argparse.Namespace) -> int:
     print("  m next            Skip current song")
     print("  m stop [all]      Stop playback")
     print("  m vol [0-130]     Set volume")
+    print("  m af [on|off]     Toggle loudness normalization")
     print("")
     print("Feedback:")
     print("  m good            Mark as loved")
@@ -1223,12 +1249,58 @@ def cmd_vol(args: argparse.Namespace) -> int:
     return 0 if any(r["ok"] for r in results) else 1
 
 
+def cmd_af(args: argparse.Namespace) -> int:
+    """Toggle persistent loudness normalization and apply it to active slots."""
+    paths = _ensure_ready()
+    action = args.state.casefold()
+    prefs = load_playback_prefs(paths)
+
+    if action != "status":
+        prefs = PlaybackPrefs(loudnorm_enabled=(action == "on"))
+        save_playback_prefs(paths, prefs)
+
+    registry = clean_dead_slots(paths)
+    results = []
+    for info in registry.values():
+        client = MpvIpcClient(info.pipe)
+        try:
+            if action != "status":
+                _apply_playback_prefs_to_client(client, prefs)
+            current_af = client.get_property("af")
+            results.append(
+                {
+                    "slot": info.slot_id,
+                    "pid": info.pid,
+                    "loudnorm_enabled": loudnorm_enabled_from_af(current_af),
+                    "ok": True,
+                }
+            )
+        except MpvIpcError as exc:
+            results.append({"slot": info.slot_id, "pid": info.pid, "ok": False, "error": str(exc)})
+
+    ok = all(r["ok"] for r in results) if results else True
+    print(
+        json.dumps(
+            {
+                "ok": ok,
+                "action": action,
+                "loudnorm_enabled": prefs.loudnorm_enabled,
+                "results": results,
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0 if ok else 1
+
+
 def cmd_doctor(_args: argparse.Namespace) -> int:
     paths = _ensure_ready()
+    prefs = load_playback_prefs(paths)
     checks: dict[str, Any] = {
         "python": sys.version.split()[0],
         "db_path": str(paths.db_path),
         "events_jsonl": str(paths.events_jsonl),
+        "loudnorm_enabled": prefs.loudnorm_enabled,
         "mpv_script_exists": paths.mpv_script.exists(),
         "mpv_exe": None,
         "yt_dlp_module": None,
@@ -1420,6 +1492,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("slot", nargs="?", default=SLOT_PRIMARY, help="Slot ID or 'all'")
     p.add_argument("level", type=int, help="Volume level 0-130")
     p.set_defaults(func=cmd_vol)
+
+    p = sub.add_parser("af", help="Toggle loudness normalization for future and active playback")
+    p.add_argument("state", nargs="?", default="status", choices=["on", "off", "status"], help="Desired loudnorm state")
+    p.set_defaults(func=cmd_af)
 
     p = sub.add_parser("slots", help="List active mpv instances")
     p.set_defaults(func=cmd_slots)

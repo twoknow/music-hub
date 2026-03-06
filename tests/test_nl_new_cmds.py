@@ -39,6 +39,11 @@ def test_stop_all_english():
     assert r and r.argv == ["stop", "all"]
 
 
+def test_loudnorm_toggle_natural_language():
+    r = parse_freeform("关闭响度标准化")
+    assert r and r.argv == ["af", "off"]
+
+
 def test_undo_natural_language():
     r = parse_freeform("撤销上一步")
     assert r and r.argv == ["undo"]

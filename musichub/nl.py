@@ -30,6 +30,7 @@ KNOWN_COMMANDS = {
     "train",
     "layer",
     "vol",
+    "af",
     "slots",
     "undo",
     "session",
@@ -128,6 +129,13 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
     vol_match_zh = re.search(r"第?\s*(\d+)\s*(?:个)?(?:槽位|slot)?.*?(?:音量).*?(?:到|为)\s*(\d+)", lower)
     if vol_match_zh:
         return ParsedIntent(["vol", vol_match_zh.group(1), vol_match_zh.group(2)], "volume control")
+
+    if any(k in lower for k in ["loudnorm", "响度标准化", "响度均衡", "响度归一"]):
+        if any(k in lower for k in ["关闭", "关掉", "off", "disable"]):
+            return ParsedIntent(["af", "off"], "disable loudness normalization")
+        if any(k in lower for k in ["开启", "打开", "on", "enable"]):
+            return ParsedIntent(["af", "on"], "enable loudness normalization")
+        return ParsedIntent(["af", "status"], "audio filter status")
 
     # Slots list
     if any(k in lower for k in ["查看槽位", "所有播放器", "所有slot", "list slots", "显示所有播放器"]):

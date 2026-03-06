@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .config import AppPaths, ensure_dirs
+from .playback_prefs import load_playback_prefs
 from .slots import pipe_for_slot, SLOT_PRIMARY
 
 
@@ -47,6 +48,7 @@ def resolve_mpv_exe(paths: AppPaths) -> str:
 def launch_mpv(paths: AppPaths, targets: list[str], slot_id: str = SLOT_PRIMARY) -> subprocess.Popen[str]:
     ensure_dirs(paths)
     mpv_exe = resolve_mpv_exe(paths)
+    prefs = load_playback_prefs(paths)
     args = [
         mpv_exe,
         "--no-video",
@@ -55,8 +57,9 @@ def launch_mpv(paths: AppPaths, targets: list[str], slot_id: str = SLOT_PRIMARY)
         f"--script-opts=musichub-events_file={paths.events_jsonl}",
         "--ytdl=yes",
         "--ytdl-format=bestaudio/best",
-        "--af=loudnorm",
     ]
+    if prefs.loudnorm_enabled:
+        args.append("--af=loudnorm")
     args.extend(targets)
     # Ensure yt-dlp is findable by mpv's ytdl hook by prepending its directory to PATH
     env = os.environ.copy()

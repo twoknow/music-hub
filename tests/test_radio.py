@@ -37,6 +37,7 @@ def test_radio_falls_back_to_search_when_related_missing_for_current_track():
          patch("musichub.cli._radio_search_fallback", return_value=["https://youtu.be/abcdefghijk"]) as mock_fallback, \
          patch("musichub.cli.active_slot_info", return_value=None), \
          patch("musichub.cli.MpvIpcClient"), \
+         patch("musichub.cli._maybe_apply_playback_prefs_to_client"), \
          patch("musichub.cli._load_targets_into_client") as mock_load, \
          patch("builtins.print") as mock_print:
 
@@ -72,6 +73,7 @@ def test_radio_uses_search_seed_when_good_history_url_is_invalid():
          patch("musichub.cli._radio_search_fallback", return_value=["https://youtu.be/abcdefghijk"]) as mock_fallback, \
          patch("musichub.cli.active_slot_info", return_value=None), \
          patch("musichub.cli.MpvIpcClient"), \
+         patch("musichub.cli._maybe_apply_playback_prefs_to_client"), \
          patch("musichub.cli._load_targets_into_client") as mock_load, \
          patch("builtins.print") as mock_print:
 

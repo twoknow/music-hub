@@ -34,6 +34,7 @@ def test_next_refills_when_queue_is_exhausted():
          patch("musichub.cli._resolve_slot_pipe", return_value=("0", r"\\.\pipe\musichub-mpv")), \
          patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
          patch("musichub.cli._get_mpv_snapshot", return_value=snap), \
+         patch("musichub.cli._maybe_apply_playback_prefs_to_client") as mock_sync, \
          patch("musichub.cli.db.connect", return_value=mock_conn), \
          patch("musichub.cli._upsert_from_snapshot", return_value=(1, snap["path"], "youtube")), \
          patch("musichub.cli.db.record_play_event"), \
@@ -43,6 +44,7 @@ def test_next_refills_when_queue_is_exhausted():
         result = cmd_next(_args())
 
     assert result == 0
+    mock_sync.assert_called_once()
     mock_append.assert_called_once()
     mock_client.command.assert_called_with(["playlist-next", "force"])
     output = json.loads(mock_print.call_args[0][0])
