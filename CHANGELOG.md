@@ -1,5 +1,26 @@
 # Music Hub 更新日志 (Changelog)
 
+## [Unreleased] - 2026-03-06
+**Windows-first 可用性收口与项目定位重写**
+
+这一轮更新的重点不是继续堆功能，而是把项目真正收口成一个可以公开展示、可以稳定使用、也方便继续演化的 Windows-first 工具。
+
+### 核心修复
+- **修复命令面断裂**：补齐 `stats`、`undo`、`session save/load/list/delete`、`export/import` 等命令与底层接口之间的错位问题。
+- **播放逻辑收口**：`m play` 恢复为优先复用主播放器；`m layer` 继续负责有意识的叠加播放；`m slots`、`m stop`、`m next` 的输出与行为更一致。
+- **去掉危险的数据库回退假象**：`current`、`good`、`bad`、`next` 不再在“没有活跃播放器”时拿数据库里的历史播放冒充“当前播放”。
+- **修复跨 profile 串线**：mpv IPC pipe 改为按 profile 派生，不同 `MUSICHUB_HOME` 之间不再互相切歌、串写历史或污染推荐数据。
+- **修复 radio 种子策略**：`m radio` 不再被导入样例里的假 YouTube URL 卡死；相关视频抓取失败时会自动退回到 `title + artist` 搜索。
+
+### 工程与测试
+- **测试收口**：补齐 `radio`、session、快照安全性等回归测试，全量测试通过。
+- **pytest 收集修复**：新增 `pytest.ini`，避免根目录测试误扫 `data/tmp` 导致权限报错。
+- **备份接口兼容层补齐**：`backup.py` 暴露 CLI 需要的包装函数，方便导出与恢复数据。
+
+### 文档与 GitHub
+- **README 完全重写**：新的首页文案强调这是一个面向 Windows、面向技术小白、同时欢迎被移植到 macOS 的极简本地音乐工具。
+- **仓库元信息更新**：补上 GitHub 仓库简介与 Topics，便于公开展示和检索。
+
 ## [v0.2.0] - 2026-03-05
 **架构重构与流媒体化升级**
 
