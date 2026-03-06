@@ -31,6 +31,14 @@ KNOWN_COMMANDS = {
     "layer",
     "vol",
     "slots",
+    "undo",
+    "session",
+    "export",
+    "import",
+    "commands",
+    "radio",
+    "note",
+    "journal",
 }
 
 
@@ -60,6 +68,32 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
         parts = shlex.split(text[1:])
         if parts:
             return ParsedIntent(parts, "explicit command prefix")
+
+    if any(k in lower for k in ["命令", "帮助", "help", "how to use", "怎么用", "usage", "cheatsheet"]):
+        return ParsedIntent(["commands"], "command cheatsheet request")
+
+    if any(k in lower for k in ["撤销", "undo", "回退上一步", "取消上一步"]):
+        return ParsedIntent(["undo"], "undo last action")
+
+    if any(k in lower for k in ["保存会话", "save session"]):
+        name = _extract_after_prefix(text, ["保存会话", "save session", "session save"])
+        return ParsedIntent(["session", "save", name] if name else ["session", "save"], "save playback session")
+    if any(k in lower for k in ["加载会话", "恢复会话", "load session", "session load"]):
+        name = _extract_after_prefix(text, ["加载会话", "恢复会话", "load session", "session load"])
+        return ParsedIntent(["session", "load", name] if name else ["session", "load"], "load playback session")
+    if any(k in lower for k in ["会话列表", "列出会话", "list sessions", "session list"]):
+        return ParsedIntent(["session", "list"], "list sessions")
+    if any(k in lower for k in ["删除会话", "删会话", "delete session", "session delete"]):
+        name = _extract_after_prefix(text, ["删除会话", "删会话", "delete session", "session delete"])
+        return ParsedIntent(["session", "delete", name] if name else ["session", "delete"], "delete session")
+
+    if any(k in lower for k in ["导入备份", "恢复备份", "import backup", "restore backup"]):
+        m = re.search(r"(\S+\.zip)\b", text)
+        if m:
+            return ParsedIntent(["import", "--in", m.group(1)], "import backup")
+        return ParsedIntent(["commands"], "import backup (missing zip path)")
+    if any(k in lower for k in ["导出数据", "导出备份", "备份", "export data", "export backup"]):
+        return ParsedIntent(["export", "--out", "musichub-backup.zip"], "export backup")
 
     # Chinese/English current/status
     if any(k in lower for k in ["当前", "现在播放", "正在播放", "current", "what is playing", "status"]):
@@ -91,6 +125,9 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
     vol_match = re.search(r"(?:^vol\s+|把.*?|音量.*?)(\d+|all)\s+(\d+)", lower)
     if vol_match:
         return ParsedIntent(["vol", vol_match.group(1), vol_match.group(2)], "volume control")
+    vol_match_zh = re.search(r"第?\s*(\d+)\s*(?:个)?(?:槽位|slot)?.*?(?:音量).*?(?:到|为)\s*(\d+)", lower)
+    if vol_match_zh:
+        return ParsedIntent(["vol", vol_match_zh.group(1), vol_match_zh.group(2)], "volume control")
 
     # Slots list
     if any(k in lower for k in ["查看槽位", "所有播放器", "所有slot", "list slots", "显示所有播放器"]):
@@ -123,11 +160,16 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
 
     # Recommendations
     if any(k in lower for k in ["推荐", "recommend"]):
+        avoid_match = re.search(r"(?:不要|别推|exclude)\s*([^\s,，。]+)", text, flags=re.IGNORECASE)
         if any(k in lower for k in ["播放", "来点", "play", "listen"]):
+            if avoid_match:
+                return ParsedIntent(["play", "--exclude-artist", avoid_match.group(1)], "play recommendations with artist exclusion")
             return ParsedIntent(["play"], "play recommendations")
         m = re.search(r"(?:top|前)\s*(\d+)", lower)
         if m:
             return ParsedIntent(["rec", "--limit", m.group(1)], "recommendations with limit")
+        if avoid_match:
+            return ParsedIntent(["rec", "--exclude-artist", avoid_match.group(1)], "recommendations with artist exclusion")
         return ParsedIntent(["rec"], "recommendations request")
 
     # Stats/profile
@@ -166,6 +208,14 @@ def parse_freeform(raw: str) -> ParsedIntent | None:
             return ParsedIntent(["sync", "ytm"], "sync ytm")
         if "网易" in text or "netease" in lower or "ncm" in lower:
             return ParsedIntent(["sync", "ncm"], "sync netease")
+
+    # Note / Journal
+    if lower.startswith("note ") or lower.startswith("笔记 ") or lower.startswith("记录 "):
+        space_idx = text.find(" ")
+        content = text[space_idx + 1 :].strip()
+        return ParsedIntent(["note", content], "note taking request")
+    if any(k in lower for k in ["查看日记", "我的日记", "journal", "查看笔记", "历史笔记"]):
+        return ParsedIntent(["journal"], "journal review request")
 
     # URL fallback
     if lower.startswith("http://") or lower.startswith("https://"):

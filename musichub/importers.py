@@ -59,18 +59,18 @@ def _extract_artist(item: dict[str, Any]) -> str | None:
         if isinstance(v, str) and v.strip():
             return v.strip()
         if isinstance(v, list):
-            parts = [str(x).strip() for x in v if str(x).strip()]
+            parts: list[str] = []
+            for x in v:
+                if isinstance(x, str) and x.strip():
+                    parts.append(x.strip())
+                elif isinstance(x, dict):
+                    for name_key in ("name", "artist", "title"):
+                        name = x.get(name_key)
+                        if isinstance(name, str) and name.strip():
+                            parts.append(name.strip())
+                            break
             if parts:
                 return ", ".join(parts)
-    if isinstance(item.get("artists"), list):
-        names: list[str] = []
-        for a in item["artists"]:
-            if isinstance(a, dict):
-                n = a.get("name")
-                if isinstance(n, str) and n.strip():
-                    names.append(n.strip())
-        if names:
-            return ", ".join(names)
     return None
 
 
@@ -288,4 +288,3 @@ def import_ytm_live(paths: AppPaths, *, auth_json: str | Path | None = None, inc
 
 def import_ncm_json(paths: AppPaths, *, json_file: str | Path) -> ImportResult:
     return import_json_file(paths, source_kind="netease", json_file=json_file)
-

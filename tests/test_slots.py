@@ -12,6 +12,7 @@ from musichub.slots import (
     load_registry, save_registry, clean_dead_slots,
     register_slot, unregister_slot, SLOT_PRIMARY,
 )
+from musichub.config import get_paths
 
 
 def make_paths(tmp_path):
@@ -29,6 +30,28 @@ def test_pipe_for_primary_slot():
 def test_pipe_for_secondary_slot():
     assert pipe_for_slot("1") == r"\\.\pipe\musichub-mpv-1"
     assert pipe_for_slot("2") == r"\\.\pipe\musichub-mpv-2"
+
+
+def test_pipe_for_slot_uses_profile_base():
+    paths = MagicMock()
+    paths.mpv_pipe = r"\\.\pipe\musichub-mpv-profile123"
+
+    assert pipe_for_slot(SLOT_PRIMARY, paths) == r"\\.\pipe\musichub-mpv-profile123"
+    assert pipe_for_slot("2", paths) == r"\\.\pipe\musichub-mpv-profile123-2"
+
+
+def test_get_paths_generates_distinct_profile_pipes(monkeypatch, tmp_path):
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+
+    monkeypatch.setenv("MUSICHUB_HOME", str(a))
+    paths_a = get_paths()
+    monkeypatch.setenv("MUSICHUB_HOME", str(b))
+    paths_b = get_paths()
+
+    assert paths_a.mpv_pipe != paths_b.mpv_pipe
+    assert paths_a.mpv_pipe.startswith(r"\\.\pipe\musichub-mpv-")
+    assert paths_b.mpv_pipe.startswith(r"\\.\pipe\musichub-mpv-")
 
 
 def test_load_registry_empty(tmp_path):

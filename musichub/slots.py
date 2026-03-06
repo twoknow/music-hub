@@ -20,11 +20,20 @@ class SlotInfo:
     pid: int
 
 
-def pipe_for_slot(slot_id: str) -> str:
+def _pipe_base(paths: AppPaths | None = None) -> str:
+    if paths is not None:
+        value = getattr(paths, "mpv_pipe", None)
+        if isinstance(value, str) and value.startswith("\\\\.\\pipe\\"):
+            return value
+    return r"\\.\pipe\musichub-mpv"
+
+
+def pipe_for_slot(slot_id: str, paths: AppPaths | None = None) -> str:
     """Return named pipe path for a given slot ID."""
+    base = _pipe_base(paths)
     if slot_id == SLOT_PRIMARY:
-        return r"\\.\pipe\musichub-mpv"
-    return rf"\\.\pipe\musichub-mpv-{slot_id}"
+        return base
+    return f"{base}-{slot_id}"
 
 
 def _registry_path(paths: AppPaths) -> Path:
@@ -104,3 +113,9 @@ def unregister_slot(paths: AppPaths, slot_id: str) -> None:
     registry = load_registry(paths)
     if registry.pop(slot_id, None) is not None:
         save_registry(paths, registry)
+
+
+def active_slot_info(paths: AppPaths, slot_id: str) -> SlotInfo | None:
+    """Convenience to get info for a specific slot, ensuring it is alive."""
+    registry = clean_dead_slots(paths)
+    return registry.get(slot_id)

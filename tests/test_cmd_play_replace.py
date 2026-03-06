@@ -73,3 +73,26 @@ def test_play_multiple_targets_appends():
     assert result == 0
     # Only one target: only loadfile replace
     assert mock_client.command.call_count == 1
+
+
+def test_play_search_query_uses_queue_and_appends():
+    """Search query should resolve multiple URLs (queue) and append them."""
+    mock_client = MagicMock()
+    mock_client.command.return_value = {"error": "success"}
+    resolved = ["https://youtu.be/one", "https://youtu.be/two", "https://youtu.be/three"]
+
+    with patch("musichub.cli._ensure_ready"), \
+         patch("musichub.cli._safe_sync_events"), \
+         patch("musichub.cli.MpvIpcClient", return_value=mock_client), \
+         patch("musichub.cli._run_yt_dlp_search_urls", return_value=resolved), \
+         patch("musichub.cli.launch_mpv"):
+
+        ns = _args("focus music")
+        ns.queue = 3
+        result = cmd_play(ns)
+
+    assert result == 0
+    assert mock_client.command.call_count == 3
+    assert mock_client.command.call_args_list[0].args[0] == ["loadfile", "https://youtu.be/one", "replace"]
+    assert mock_client.command.call_args_list[1].args[0] == ["loadfile", "https://youtu.be/two", "append"]
+    assert mock_client.command.call_args_list[2].args[0] == ["loadfile", "https://youtu.be/three", "append"]

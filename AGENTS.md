@@ -18,16 +18,22 @@ Run `m doctor` first. If all checks pass, the tool is ready. If not, see README.
 | `m play <URL>` | Play a specific YouTube/YTM URL | `m play https://youtu.be/xxx` |
 | `m play` | Play recommendation queue (requires history) | `m play` |
 | `m rec` | List top recommendations without playing | `m rec --limit 10` |
-| `m good` | Mark currently playing track as liked | `m good` |
-| `m bad` | Mark currently playing track as disliked | `m bad` |
-| `m next` | Skip to next track | `m next` |
+| `m rec --exclude-artist ... --exclude-track ... --min-score ...` | Filter recommendations by exclusions/score | `m rec --exclude-artist "Artist"` |
+| `m good [slot]` | Mark current track as liked (slot-aware) | `m good 1` |
+| `m bad [slot]` | Mark current track as disliked (slot-aware) | `m bad 1` |
+| `m next [slot]` | Skip to next track on a slot | `m next 0` |
+| `m undo [slot]` | Undo latest manual feedback/skip | `m undo 0` |
 | `m layer "<query>"` | Start a new mpv instance alongside existing (overlay) | `m layer "白噪音"` |
 | `m vol <slot> <level>` | Set volume for a slot (0-130, 100=normal) | `m vol 0 70` |
 | `m vol all <level>` | Set volume for all active slots | `m vol all 60` |
 | `m slots` | List all active mpv instances with current track | `m slots` |
 | `m stop [slot]` | Stop a specific slot (default: 0) or all | `m stop all` |
-| `m pause` | Toggle pause / resume | `m pause` |
-| `m current` | Show what's playing now (JSON) | `m current` |
+| `m pause [slot|all]` | Toggle pause / resume | `m pause all` |
+| `m current [slot|all]` | Show what's playing now (JSON) | `m current all` |
+| `m session save/load/list/delete` | Save/restore/list/remove playback sessions | `m session save work` |
+| `m export --out <zip>` | Export DB/models to backup ZIP | `m export --out .\backup.zip` |
+| `m import --in <zip> --mode replace` | Import backup ZIP to current profile | `m import --in .\backup.zip --mode replace` |
+| `m commands` | Show quick command + natural language cheatsheet | `m commands` |
 | `m stats` | Show listening stats summary (JSON) | `m stats` |
 | `m daemon start` | Start background event sync daemon | `m daemon start` |
 | `m daemon stop` | Stop daemon | `m daemon stop` |
@@ -46,8 +52,14 @@ m "下一首"
 m "这首好听"
 m "不喜欢这首"
 m "给我推荐"
+m "给我推荐不要周杰伦"
 m "当前播放什么"
+m "保存会话 工作流"
+m "撤销上一步"
+m "怎么用"
 ```
+
+In AI CLI, prefer natural language first; explicit commands are optional.
 
 ## Output formats
 
@@ -91,6 +103,15 @@ User wants to know what's playing?
 
 User wants recommendations without auto-playing?
   → m rec
+
+User wants to rollback an accidental action?
+  → m undo
+
+User wants to save/restore playback context?
+  → m session save/load
+
+User wants backup/migration?
+  → m export / m import
 
 Something seems broken?
   → m doctor

@@ -85,6 +85,11 @@ def ingest_mpv_events(paths: AppPaths) -> dict[str, int]:
     conn = db.connect(paths.db_path)
     try:
         offset = db.get_ingest_offset(conn, "mpv_jsonl")
+        file_size = paths.events_jsonl.stat().st_size
+        if offset < 0 or offset > file_size:
+            # JSONL may be rotated/truncated; reset to start to avoid getting stuck past EOF.
+            offset = 0
+            db.set_ingest_offset(conn, "mpv_jsonl", 0)
         read_count = 0
         new_count = 0
         skipped = 0

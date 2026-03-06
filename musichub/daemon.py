@@ -23,6 +23,7 @@ def _now_iso() -> str:
 class DaemonStatus:
     running: bool
     pid: int | None
+    owned: bool | None
     pid_file: Path
     log_file: Path
 
@@ -30,8 +31,17 @@ class DaemonStatus:
 def _read_pid(pid_file: Path) -> int | None:
     if not pid_file.exists():
         return None
+    raw = pid_file.read_text(encoding="utf-8").strip()
+    if not raw:
+        return None
     try:
-        return int(pid_file.read_text(encoding="utf-8").strip())
+        payload = json.loads(raw)
+        if isinstance(payload, dict) and payload.get("pid") is not None:
+            return int(payload["pid"])
+    except Exception:
+        pass
+    try:
+        return int(raw)
     except Exception:
         return None
 
@@ -54,25 +64,75 @@ def _pid_exists(pid: int) -> bool:
         return False
 
 
+def _process_cmdline(pid: int) -> str | None:
+    if pid <= 0:
+        return None
+    if os.name == "nt":
+        ps = (
+            "$p = Get-CimInstance Win32_Process -Filter \"ProcessId = "
+            f"{pid}"
+            "\" -ErrorAction SilentlyContinue; "
+            "if ($p) { $p.CommandLine }"
+        )
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        cmdline = (proc.stdout or "").strip()
+        return cmdline or None
+    proc_cmdline = Path(f"/proc/{pid}/cmdline")
+    if proc_cmdline.exists():
+        try:
+            raw = proc_cmdline.read_bytes()
+            return raw.replace(b"\x00", b" ").decode("utf-8", errors="replace").strip() or None
+        except Exception:
+            return None
+    return None
+
+
+def _is_our_daemon_process(pid: int) -> bool | None:
+    cmdline = _process_cmdline(pid)
+    if not cmdline:
+        return None
+    lower = cmdline.casefold()
+    return ("musichub.cli" in lower) and ("daemon" in lower) and ("run" in lower)
+
+
 def status(paths: AppPaths | None = None) -> DaemonStatus:
     paths = paths or get_paths()
     ensure_dirs(paths)
     pid = _read_pid(paths.daemon_pid_file)
-    running = bool(pid and _pid_exists(pid))
+    owned: bool | None = None
+    running = False
+    if pid and _pid_exists(pid):
+        owned = _is_our_daemon_process(pid)
+        running = owned is not False
     if not running and paths.daemon_pid_file.exists():
         try:
             paths.daemon_pid_file.unlink()
         except OSError:
             pass
         pid = None
-    return DaemonStatus(running=running, pid=pid, pid_file=paths.daemon_pid_file, log_file=paths.daemon_log_file)
+        owned = None
+    return DaemonStatus(
+        running=running,
+        pid=pid,
+        owned=owned,
+        pid_file=paths.daemon_pid_file,
+        log_file=paths.daemon_log_file,
+    )
 
 
 def run_loop(paths: AppPaths | None = None, *, poll_sec: float = 2.0, once: bool = False) -> int:
     paths = paths or get_paths()
     ensure_dirs(paths)
     db.init_db(paths)
-    paths.daemon_pid_file.write_text(str(os.getpid()), encoding="utf-8")
+    paths.daemon_pid_file.write_text(
+        json.dumps({"pid": os.getpid(), "started_at": _now_iso()}, ensure_ascii=False),
+        encoding="utf-8",
+    )
     try:
         with paths.daemon_log_file.open("a", encoding="utf-8") as log:
             log.write(json.dumps({"time": _now_iso(), "event": "daemon_start", "pid": os.getpid()}) + "\n")
@@ -138,8 +198,20 @@ def stop(paths: AppPaths | None = None) -> DaemonStatus:
         return status(paths)
 
     pid = st.pid
+    owned = _is_our_daemon_process(pid)
+    if owned is not True:
+        try:
+            if paths.daemon_pid_file.exists():
+                paths.daemon_pid_file.unlink()
+        except OSError:
+            pass
+        return status(paths)
+
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, check=False)
+        subprocess.run(["taskkill", "/PID", str(pid), "/T"], capture_output=True, text=True, check=False)
+        time.sleep(0.3)
+        if _pid_exists(pid):
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, check=False)
     else:
         os.kill(pid, signal.SIGTERM)
     time.sleep(0.5)

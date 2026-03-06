@@ -49,6 +49,7 @@ Then ingest Lua-logged events (or start the daemon so this happens automatically
 
 `m` supports freeform text. Unknown input is parsed as a music intent.
 When you say `播放 ...` with specific content, it prefers YouTube search playback (via `yt-dlp ytsearch1`) before recommendation mode.
+You can call this from AI CLI directly in natural language, so you do not need to memorize all commands.
 
 Examples:
 
@@ -62,6 +63,9 @@ Examples:
 .\m.ps1 "当前播放"
 .\m.ps1 "启动后台同步"
 .\m.ps1 "停止后台同步"
+.\m.ps1 "给我推荐不要周杰伦"
+.\m.ps1 "保存会话 工作流"
+.\m.ps1 "撤销上一步"
 ```
 
 You can still use explicit commands:
@@ -76,7 +80,16 @@ You can still use explicit commands:
 .\m.ps1 train implicit
 .\m.ps1 rec --engine auto --why
 .\m.ps1 play --engine auto --why
+.\m.ps1 rec --exclude-artist "周杰伦" --min-score 1.0
+.\m.ps1 undo
+.\m.ps1 session save work
+.\m.ps1 session load work
+.\m.ps1 export --out .\backup.zip
+.\m.ps1 import --in .\backup.zip --mode replace
+.\m.ps1 commands
 ```
+
+At any time, run `m commands` (or `m "怎么用"`) to view a quick cheatsheet.
 
 ## JSON Import Format (YTM / NCM)
 

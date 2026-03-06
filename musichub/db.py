@@ -191,6 +191,59 @@ class Recommendation:
     play_score: float = 0.0
 
 
+def undo_last_user_action(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT source_table, event_id, action, occurred_at
+        FROM (
+            SELECT
+                'feedback_events' AS source_table,
+                id AS event_id,
+                kind AS action,
+                occurred_at
+            FROM feedback_events
+            WHERE kind IN ('good', 'bad')
+              AND COALESCE(note, '') NOT LIKE 'import:%'
+            UNION ALL
+            SELECT
+                'play_events' AS source_table,
+                id AS event_id,
+                action,
+                occurred_at
+            FROM play_events
+            WHERE action = 'next'
+              AND COALESCE(reason, '') IN ('manual_next_cli', 'manual_next_key', 'manual_next')
+        )
+        ORDER BY occurred_at DESC, event_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+
+    source_table = str(row["source_table"])
+    event_id = int(row["event_id"])
+    action = str(row["action"])
+    occurred_at = str(row["occurred_at"])
+
+    if source_table == "feedback_events":
+        conn.execute("DELETE FROM feedback_events WHERE id = ?", (event_id,))
+    elif source_table == "play_events":
+        conn.execute("DELETE FROM play_events WHERE id = ?", (event_id,))
+    else:
+        return None
+    return {
+        "source_table": source_table,
+        "event_id": event_id,
+        "action": action,
+        "occurred_at": occurred_at,
+    }
+
+
+def pop_last_manual_event(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    return undo_last_user_action(conn)
+
+
 def fetch_recommendations(conn: sqlite3.Connection, limit: int = 10) -> list[Recommendation]:
     rows = conn.execute(
         """
@@ -310,6 +363,10 @@ def stats_summary(conn: sqlite3.Connection) -> dict[str, Any]:
         "bad_events": int(counts["bad_events"]),
         "top_artists": [dict(r) for r in top_artists],
     }
+
+
+def fetch_user_stats(conn: sqlite3.Connection) -> dict[str, Any]:
+    return stats_summary(conn)
 
 
 def fetch_top_good_artists(conn: sqlite3.Connection, limit: int = 8) -> list[dict[str, Any]]:
@@ -440,3 +497,48 @@ def fetch_context_interactions(conn: sqlite3.Connection) -> list[dict[str, Any]]
         """
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def save_session(conn: sqlite3.Connection, name: str, payload: dict[str, Any]) -> None:
+    session_name = (name or "default").strip() or "default"
+    conn.execute(
+        """
+        INSERT INTO saved_sessions(name, payload_json)
+        VALUES (?, ?)
+        ON CONFLICT(name) DO UPDATE SET
+            payload_json=excluded.payload_json,
+            updated_at=CURRENT_TIMESTAMP
+        """,
+        (session_name, json.dumps(payload, ensure_ascii=False)),
+    )
+
+
+def load_session(conn: sqlite3.Connection, name: str) -> dict[str, Any] | None:
+    session_name = (name or "default").strip() or "default"
+    row = conn.execute(
+        "SELECT payload_json FROM saved_sessions WHERE name = ?",
+        (session_name,),
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        payload = json.loads(str(row["payload_json"]))
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def list_sessions(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT name
+        FROM saved_sessions
+        ORDER BY updated_at DESC, name ASC
+        """
+    ).fetchall()
+    return [str(r["name"]) for r in rows]
+
+
+def delete_session(conn: sqlite3.Connection, name: str) -> None:
+    session_name = (name or "default").strip() or "default"
+    conn.execute("DELETE FROM saved_sessions WHERE name = ?", (session_name,))

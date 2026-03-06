@@ -16,6 +16,11 @@ $YtdlpExe  = Join-Path $ToolsDir "yt-dlp.exe"
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "    WARN: $msg" -ForegroundColor Yellow }
+function Assert-LastExit($stepName) {
+    if ($LASTEXITCODE -ne 0) {
+        throw "$stepName failed with exit code $LASTEXITCODE"
+    }
+}
 
 # --- 1. Check Python ---------------------------------------------------------
 Write-Step "Checking Python 3.11+"
@@ -52,18 +57,25 @@ if (Test-Path $MpvExe) {
         Write-Host "    Extracting..."
         $7z = "7z"
         if (-not (Get-Command $7z -ErrorAction SilentlyContinue)) {
-            Write-Warn "7z not found. Install 7-Zip and re-run, OR manually extract $zipPath to $ToolsDir"
-            Write-Warn "Skipping mpv extraction. Install 7-Zip from https://www.7-zip.org/"
+            throw "7z not found. Install 7-Zip from https://www.7-zip.org/ and rerun install.ps1."
         } else {
             & $7z x $zipPath -o"$ToolsDir" -y | Out-Null
+            Assert-LastExit "Extracting mpv portable"
             Remove-Item $zipPath -Force
+            if (-not (Test-Path $MpvExe)) {
+                $found = Get-ChildItem -Path $ToolsDir -Recurse -File -Filter "mpv.exe" | Select-Object -First 1
+                if ($found) {
+                    Copy-Item -Path $found.FullName -Destination $MpvExe -Force
+                }
+            }
             Write-OK "mpv extracted to $ToolsDir"
         }
     } catch {
-        Write-Warn "Could not auto-download mpv: $_"
-        Write-Warn "Manual option: download portable build from https://mpv.io/installation/"
-        Write-Warn "Extract mpv.exe to: $ToolsDir"
+        throw "Could not prepare mpv portable: $_"
     }
+}
+if (-not (Test-Path $MpvExe)) {
+    throw "mpv.exe is missing at $MpvExe. Manually extract portable mpv there and rerun install.ps1."
 }
 
 # --- 3. Download yt-dlp.exe --------------------------------------------------
@@ -87,6 +99,7 @@ Write-Step "Installing Python dependencies (pip install -e .)"
 Push-Location $RepoRoot
 try {
     python -m pip install -e . --quiet
+    Assert-LastExit "pip install -e ."
     Write-OK "Python deps installed"
 } finally {
     Pop-Location
@@ -97,6 +110,7 @@ Write-Step "Registering global 'm' command"
 Push-Location $RepoRoot
 try {
     & ".\install-m-cli.ps1"
+    Assert-LastExit "install-m-cli.ps1"
     Write-OK "'m' command registered"
 } finally {
     Pop-Location
@@ -107,6 +121,7 @@ Write-Step "Running 'm doctor' to verify setup"
 Push-Location $RepoRoot
 try {
     & ".\m.ps1" doctor
+    Assert-LastExit "m doctor"
 } finally {
     Pop-Location
 }

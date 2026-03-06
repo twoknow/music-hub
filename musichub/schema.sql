@@ -63,8 +63,16 @@ CREATE TABLE IF NOT EXISTS ingest_state (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS saved_sessions (
+    name TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_track_sources_track_id ON track_sources(track_id);
 CREATE INDEX IF NOT EXISTS idx_play_events_track_id ON play_events(track_id);
+CREATE INDEX IF NOT EXISTS idx_play_events_occurred_at ON play_events(occurred_at);
 CREATE INDEX IF NOT EXISTS idx_feedback_events_track_id ON feedback_events(track_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_events_kind ON feedback_events(kind);
-
+CREATE INDEX IF NOT EXISTS idx_feedback_events_occurred_at ON feedback_events(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_saved_sessions_updated_at ON saved_sessions(updated_at);

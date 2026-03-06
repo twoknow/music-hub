@@ -50,10 +50,12 @@ def launch_mpv(paths: AppPaths, targets: list[str], slot_id: str = SLOT_PRIMARY)
     args = [
         mpv_exe,
         "--no-video",
-        f"--input-ipc-server={pipe_for_slot(slot_id)}",
+        f"--input-ipc-server={pipe_for_slot(slot_id, paths)}",
         f"--script={paths.mpv_script}",
         f"--script-opts=musichub-events_file={paths.events_jsonl}",
         "--ytdl=yes",
+        "--ytdl-format=bestaudio/best",
+        "--af=loudnorm",
     ]
     args.extend(targets)
     # Ensure yt-dlp is findable by mpv's ytdl hook by prepending its directory to PATH

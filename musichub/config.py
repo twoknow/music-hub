@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,12 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _profile_pipe_name(base_dir: Path) -> str:
+    key = str(base_dir).casefold().encode("utf-8", errors="replace")
+    suffix = hashlib.sha1(key).hexdigest()[:12]
+    return rf"\\.\pipe\musichub-mpv-{suffix}"
+
+
 def get_paths() -> AppPaths:
     base = _default_base_dir()
     runtime_dir = base / "runtime"
@@ -48,7 +55,7 @@ def get_paths() -> AppPaths:
         models_dir=base / "models",
         implicit_recs_file=(base / "models" / "implicit_recs.json"),
         model_meta_file=(base / "models" / "model_meta.json"),
-        mpv_pipe=r"\\.\pipe\musichub-mpv",
+        mpv_pipe=_profile_pipe_name(base),
         mpv_script=project_root() / "mpv-scripts" / "musichub.lua",
         mpv_exe_hint=(project_root() / "mpv-portable" / "mpv.exe"),
     )
